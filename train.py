@@ -149,7 +149,7 @@ class Trainer(object):
         print('Validation accuracy: {:.4f}'.format(accuracy))
         # Save model if val_loss lower than best 
         if accuracy > best_acc:
-            best_acc = epoch_loss/len(self.val_loader)
+            best_acc = accuracy 
             save_name = os.path.join(os.getcwd(), 'results', self.exp_name, 'best_acc.pth') 
             save_dict = {
                 "epoch": epoch,
