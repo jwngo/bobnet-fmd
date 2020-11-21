@@ -38,6 +38,7 @@ class Flickr(data.Dataset):
             for c in self.classes: 
                 for root, dirs, files in os.walk(os.path.join(
                     os.getcwd(), 'FMD', 'image','test', '{}'.format(c))):
+
                     for f in files:
                         if f.endswith('.jpg'):
                             s = os.path.join(root, f)

@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import pickle 
 
 from torch.utils import data 
+from RandAugment import RandAugment
 # from model import BobNet
 from dataset import Flickr
 
@@ -19,6 +20,7 @@ def parse_args():
     parser = argparse.ArgumentParser() 
     parser.add_argument("exp_name", help="name of experiment to run")
     parser.add_argument("--efficientnet", action="store_true")
+    parser.add_argument("--alexnet", action="store_true")
     args = parser.parse_args()
     return args
 args = parse_args() 
@@ -28,15 +30,18 @@ class Trainer(object):
         self.exp_name = exp
         self.device = torch.device('cuda:0') # Change to YAML 
         self.max_epochs = 50 
-        self.batch_size = 12
+        self.batch_size = 50
         self.train_transform = transforms.Compose([
-            transforms.Resize((227,227)),
+            transforms.Resize((224,224)),
+            transforms.RandomHorizontalFlip(),
             #transforms.RandomCrop((227,227)),
             transforms.ToTensor(),
             transforms.Normalize((0.485,0.456,0.406),(0.229,0.224,0.225)),
         ])
+        # Add RandAugment with N, M(hyperparameter) 
+        self.train_transform.transforms.insert(0, RandAugment(1,9))
         self.val_transform = transforms.Compose([
-            transforms.Resize((227,227)),
+            transforms.Resize((224,224)),
             transforms.ToTensor(),
             transforms.Normalize((0.485,0.456,0.406),(0.229,0.224,0.225)),
         ])
@@ -71,9 +76,14 @@ class Trainer(object):
         # Use efficientnet
         if args.efficientnet:
             from efficientnet_pytorch import EfficientNet
-            self.model = EfficientNet.from_pretrained('efficientnet-b0', num_classes=10, image_size=(227,227)).to(self.device)
+            self.model = EfficientNet.from_pretrained('efficientnet-b0', num_classes=10, image_size=(168,224), dropout_rate=0.5).to(self.device)
+        elif args.alexnet:
+            from torchvision.models import alexnet 
+            self.model = alexnet(pretrained=True)
+            # Change output layer to 10 classes 
+            self.model.classifier[6] = nn.Linear(4096, 10) 
+            self.model = self.model.to(self.device)
         else:
-            # BobNet
             self.model = BobNet(2).to(self.device)
         self.optimizer = optim.SGD(
             self.model.parameters(),
