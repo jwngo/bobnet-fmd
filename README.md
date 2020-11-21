@@ -19,4 +19,4 @@ Experiments will be saved to results/<expname> with
 run.pth (for resuming) and best\_acc.pth (best model) saved. 
 
 You should add the datasets into FMD/ for FMD
-and minc-2500 for MINC.
+and minc-2500/ for MINC.
