@@ -82,23 +82,18 @@ class MINC(data.Dataset):
         self.img_list = [] 
         self.label_list = [] 
         if self.image_set == 'train': 
-            for c in self.classes: 
-                for root, dirs, files in os.walk(os.path.join(
-                    os.getcwd(), 'minc-2500', 'images', '{}'.format(c))):
-                    for f in files:
-                        if f.endswith('.jpg'): 
-                            s = os.path.join(root, f)
-                            self.img_list.append(s)
-                            self.label_list.append(self.map[c])
+            with open(os.path.join(os.getcwd(), 'minc-2500', 'labels', 'train.txt'), 'r') as f:
+                for line in f: 
+                    line = line.split(" ")
+                    self.img_list.append(os.path.join(os.getcwd(), 'minc-2500', line[0]))
+                    self.label_list.append(int(line[1]))
         if self.image_set == 'val': 
-            for c in self.classes: 
-                for root, dirs, files in os.walk(os.path.join(
-                    os.getcwd(), 'minc-2500', 'test', 'images', '{}'.format(c))):
-                    for f in files:
-                        if f.endswith('.jpg'):
-                            s = os.path.join(root, f)
-                            self.img_list.append(s)
-                            self.label_list.append(self.map[c])
+            with open(os.path.join(os.getcwd(), 'minc-2500', 'labels', 'test.txt'), 'r') as f:
+                for line in f: 
+                    line = line.split(" ")
+                    self.img_list.append(os.path.join(os.getcwd(), 'minc-2500', line[0]))
+                    self.label_list.append(int(line[1]))
+
     def __getitem__(self, idx): 
         img = self.img_list[idx]
         img = cv2.imread(img)
@@ -117,4 +112,3 @@ class MINC(data.Dataset):
 
     def __len__(self): 
         return len(self.img_list)         
-
