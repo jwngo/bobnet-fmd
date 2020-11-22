@@ -11,7 +11,7 @@ train and test data.
 ## Usage 
 
 ```python
-python train.py <expname> --alexnet --minc # Uses pre-trained AleNet on Minc
+python train.py <expname> --alexnet --minc # Uses pre-trained AlexNet on Minc
 python train.py <expname> --efficientnet --aug # Uses pre-trained EfficientNet and RandAugment
 ```
 

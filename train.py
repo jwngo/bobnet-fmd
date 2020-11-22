@@ -5,24 +5,34 @@ import torch.nn as nn
 import torch.optim.lr_scheduler as lr_scheduler 
 import numpy as np 
 import torch.optim as optim
+import torchvision.models as models
 import torchvision.transforms as transforms
 import time
 import matplotlib.pyplot as plt
 import pickle 
+import albumentations as A
 
 from torch.utils import data 
 from RandAugment import RandAugment
 # from model import BobNet
 from dataset import Flickr
 from dataset import MINC
+import gc
 
 best_acc = 1e-6
 def parse_args(): 
     parser = argparse.ArgumentParser() 
     parser.add_argument("exp_name", help="name of experiment to run")
+    parser.add_argument("--batch_size", type = int, help="batch size of the experiment")
+    parser.add_argument("--mixup", action="store_true")
     parser.add_argument("--efficientnet", action="store_true")
     parser.add_argument("--alexnet", action="store_true")
+    parser.add_argument("--googlenet", action="store_true")
+    parser.add_argument("--vgg19", action="store_true")
+    parser.add_argument("--densenet", action="store_true")
+    parser.add_argument("--freeze", action="store_true", help="only freeze vgg19 for now")
     parser.add_argument("--aug", action="store_true")
+    parser.add_argument("--albumentation", action="store_true")
     parser.add_argument("--minc", action="store_true")
     args = parser.parse_args()
     return args
@@ -33,7 +43,8 @@ class Trainer(object):
         self.exp_name = exp
         self.device = torch.device('cuda:0') # Change to YAML 
         self.max_epochs = 50 
-        self.batch_size = 64
+        self.batch_size = args.batch_size
+
         self.train_transform = transforms.Compose([
             transforms.Resize((224,224)),
             transforms.RandomHorizontalFlip(),
@@ -44,37 +55,39 @@ class Trainer(object):
         if args.aug:
             print("RandAugment will be run")
             self.train_transform.transforms.insert(0, RandAugment(1,9))
-        self.val_transform = transforms.Compose([
+            self.val_transform = transforms.Compose([
             transforms.Resize((224,224)),
             transforms.ToTensor(),
-            transforms.Normalize((0.485,0.456,0.406),(0.229,0.224,0.225)),
+            # transforms.Normalize((0.485,0.456,0.406),(0.229,0.224,0.225)),
         ])
+        elif args.albumentation:
+            self.train_transform = A.Compose([
+                A.CLAHE(),
+                A.RandomRotate90(),
+                A.Transpose(),
+                A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.50, rotate_limit=45, p=.75),
+                A.Blur(blur_limit=3),
+                A.OpticalDistortion(),
+                A.GridDistortion(),
+                A.HueSaturationValue()
+            ])
+            self.val_transform = transforms.Compose([
+            transforms.Resize((224,224)),
+            transforms.ToTensor(),
+            # transforms.Normalize((0.485,0.456,0.406),(0.229,0.224,0.225)),
+            ])
+
+
         if args.minc:
             self.train_dataset = MINC(
                 path=self.path,
                 image_set='train',
                 transforms=self.train_transform,
             )
-            self.train_loader = data.DataLoader(
-                dataset=self.train_dataset,
-                batch_size=self.batch_size,
-                shuffle=True,
-                num_workers=0,
-                pin_memory=True,
-                drop_last=True,
-            )
             self.val_dataset = MINC(
                 path=self.path,
                 image_set='val',
                 transforms=self.val_transform,
-            )
-            self.val_loader = data.DataLoader( 
-                dataset=self.val_dataset,
-                batch_size=self.batch_size,
-                shuffle=False,
-                num_workers=0,
-                pin_memory=True,
-                drop_last=False,
             )
 
         else: # Use Flickr
@@ -82,42 +95,68 @@ class Trainer(object):
                 path=self.path,
                 image_set='train',
                 transforms=self.train_transform,
-            )
-            self.train_loader = data.DataLoader(
-                dataset=self.train_dataset,
-                batch_size=self.batch_size,
-                shuffle=True,
-                num_workers=0,
-                pin_memory=True,
-                drop_last=True,
+                mixup=args.mixup
             )
             self.val_dataset = Flickr(
                 path=self.path,
                 image_set='val',
                 transforms=self.val_transform,
             )
-            self.val_loader = data.DataLoader( 
-                dataset=self.val_dataset,
-                batch_size=self.batch_size,
-                shuffle=False,
-                num_workers=0,
-                pin_memory=True,
-                drop_last=False,
-            )
+        self.train_loader = data.DataLoader(
+            dataset=self.train_dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=1,
+            pin_memory=True,
+            drop_last=True,
+        )
+        self.val_loader = data.DataLoader( 
+            dataset=self.val_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=1,
+            pin_memory=True,
+            drop_last=False,
+        )
         self.iters_per_epoch = len(self.train_dataset) // self.batch_size 
         self.max_iters = self.max_epochs * self.iters_per_epoch
         # Use efficientnet
         if args.efficientnet:
             from efficientnet_pytorch import EfficientNet
-            self.model = EfficientNet.from_pretrained('efficientnet-b0', num_classes=10, image_size=(168,224), dropout_rate=0.5).to(self.device)
+            self.model = EfficientNet.from_pretrained('efficientnet-b0', num_classes=10, image_size=(227,227)).to(self.device)
+        elif args.googlenet:
+            self.model = torch.hub.load('pytorch/vision:v0.6.0', 'googlenet', pretrained=True)
+            self.model.fc = torch.nn.Linear(1024, 10)
+            self.model = self.model.to(self.device)
+        elif args.vgg19:
+            self.model = models.vgg19(pretrained=True)
+            self.model.classifier[6].weight = torch.nn.Parameter(self.model.classifier[6].weight[:10])
+            self.model.classifier[6].bias = torch.nn.Parameter(self.model.classifier[6].bias[:10])
+            self.model.classifier[6].out_features = 10
+            self.model = self.model.to(self.device)
+            if args.freeze:
+                for layer in self.model.features:
+                    print("Freezing layer:", layer)
+                    layer.require_grad = False
+                for idx, layer in enumerate(self.model.classifier):
+                    if idx != 6:
+                        print("Freezing layer:", layer)
+                        layer.require_grad = False
         elif args.alexnet:
             from torchvision.models import alexnet 
             self.model = alexnet(pretrained=True)
             # Change output layer to 10 classes 
             self.model.classifier[6] = nn.Linear(4096, 10) 
             self.model = self.model.to(self.device)
+        elif args.densenet:
+            self.model = models.densenet121(pretrained = True)
+            self.model.classifier.weight = torch.nn.Parameter(self.model.classifier.weight[:10])
+            self.model.classifier.bias = torch.nn.Parameter(self.model.classifier.bias[:10])
+            self.model.classifier.out_features = 10
+            self.model = self.model.to(self.device)
         else:
             self.model = BobNet(2).to(self.device)
+        
         self.optimizer = optim.SGD(
             self.model.parameters(),
             lr=0.001,
@@ -228,3 +267,4 @@ if __name__ == '__main__':
         with open(os.path.join(os.getcwd(),'results',t.exp_name, 'p.pkl'), 'wb') as handle:
             pickle.dump(p, handle)
         print("Saved plot details to ", os.path.join(os.getcwd(),'results',t.exp_name, 'p.pkl'))
+        gc.collect()
