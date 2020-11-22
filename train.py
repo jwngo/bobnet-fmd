@@ -13,8 +13,11 @@ import pickle
 import albumentations as A
 
 from torch.utils import data 
+from RandAugment import RandAugment
 # from model import BobNet
 from dataset import Flickr
+from dataset import MINC
+import gc
 
 best_acc = 1e-6
 def parse_args(): 
@@ -27,7 +30,10 @@ def parse_args():
     parser.add_argument("--googlenet", action="store_true")
     parser.add_argument("--vgg19", action="store_true")
     parser.add_argument("--densenet", action="store_true")
-    parser.add_argument("--freeze", action="store_true")
+    parser.add_argument("--freeze", action="store_true", help="only freeze vgg19 for now")
+    parser.add_argument("--aug", action="store_true")
+    parser.add_argument("--albumentation", action="store_true")
+    parser.add_argument("--minc", action="store_true")
     args = parser.parse_args()
     return args
 args = parse_args() 
@@ -38,53 +44,77 @@ class Trainer(object):
         self.device = torch.device('cuda:0') # Change to YAML 
         self.max_epochs = 50 
         self.batch_size = args.batch_size
-        # self.train_transform = transforms.Compose([
-        #     transforms.Resize((227,227)),
-        #     #transforms.RandomCrop((227,227)),
-        #     transforms.RandomAffine(degrees = (0, 360), translate = (0.2, 0.2), scale = (1, 5)),
-        #     transforms.RandomHorizontalFlip(p=0.5),
-        #     transforms.ToTensor(),
-        #     transforms.Normalize((0.485,0.456,0.406),(0.229,0.224,0.225)),
-        # ])
-        self.train_transform = A.Compose([
-            A.CLAHE(),
-            A.RandomRotate90(),
-            A.Transpose(),
-            A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.50, rotate_limit=45, p=.75),
-            A.Blur(blur_limit=3),
-            A.OpticalDistortion(),
-            A.GridDistortion(),
-            A.HueSaturationValue()
+
+        self.train_transform = transforms.Compose([
+            transforms.Resize((224,224)),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.485,0.456,0.406),(0.229,0.224,0.225)),
         ])
-        self.val_transform = transforms.Compose([
-            transforms.Resize((227,227)),
+        # Add RandAugment with N, M(hyperparameter) 
+        if args.aug:
+            print("RandAugment will be run")
+            self.train_transform.transforms.insert(0, RandAugment(1,9))
+            self.val_transform = transforms.Compose([
+            transforms.Resize((224,224)),
             transforms.ToTensor(),
             # transforms.Normalize((0.485,0.456,0.406),(0.229,0.224,0.225)),
         ])
-        self.train_dataset = Flickr(
-            path=self.path,
-            image_set='train',
-            transforms=self.train_transform,
-            mixup=args.mixup
-        )
+        elif args.albumentation:
+            self.train_transform = A.Compose([
+                A.CLAHE(),
+                A.RandomRotate90(),
+                A.Transpose(),
+                A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.50, rotate_limit=45, p=.75),
+                A.Blur(blur_limit=3),
+                A.OpticalDistortion(),
+                A.GridDistortion(),
+                A.HueSaturationValue()
+            ])
+            self.val_transform = transforms.Compose([
+            transforms.Resize((224,224)),
+            transforms.ToTensor(),
+            # transforms.Normalize((0.485,0.456,0.406),(0.229,0.224,0.225)),
+            ])
+
+
+        if args.minc:
+            self.train_dataset = MINC(
+                path=self.path,
+                image_set='train',
+                transforms=self.train_transform,
+            )
+            self.val_dataset = MINC(
+                path=self.path,
+                image_set='val',
+                transforms=self.val_transform,
+            )
+
+        else: # Use Flickr
+            self.train_dataset = Flickr(
+                path=self.path,
+                image_set='train',
+                transforms=self.train_transform,
+                mixup=args.mixup
+            )
+            self.val_dataset = Flickr(
+                path=self.path,
+                image_set='val',
+                transforms=self.val_transform,
+            )
         self.train_loader = data.DataLoader(
             dataset=self.train_dataset,
             batch_size=self.batch_size,
             shuffle=True,
-            num_workers=0,
+            num_workers=1,
             pin_memory=True,
             drop_last=True,
-        )
-        self.val_dataset = Flickr(
-            path=self.path,
-            image_set='val',
-            transforms=self.val_transform,
         )
         self.val_loader = data.DataLoader( 
             dataset=self.val_dataset,
             batch_size=self.batch_size,
             shuffle=False,
-            num_workers=0,
+            num_workers=1,
             pin_memory=True,
             drop_last=False,
         )
@@ -125,14 +155,15 @@ class Trainer(object):
             self.model.classifier.out_features = 10
             self.model = self.model.to(self.device)
         else:
-            # BobNet
             self.model = BobNet(2).to(self.device)
+        
         self.optimizer = optim.SGD(
             self.model.parameters(),
             lr=0.001,
             momentum=0.9,
             weight_decay=1e-4,
         )
+        self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.1)
         self.criterion = nn.CrossEntropyLoss().cuda()
         
         # For plotting graphs 
@@ -226,6 +257,7 @@ if __name__ == '__main__':
     for epoch in range(t.max_epochs):
         t.train(epoch, start_time)
         t.val(epoch)
+        t.lr_scheduler.step()
         p = {
             'train_acc': t.train_acc,
             'train_loss': t.train_loss,
@@ -235,3 +267,4 @@ if __name__ == '__main__':
         with open(os.path.join(os.getcwd(),'results',t.exp_name, 'p.pkl'), 'wb') as handle:
             pickle.dump(p, handle)
         print("Saved plot details to ", os.path.join(os.getcwd(),'results',t.exp_name, 'p.pkl'))
+        gc.collect()
