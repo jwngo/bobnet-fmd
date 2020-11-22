@@ -163,7 +163,7 @@ class Trainer(object):
             momentum=0.9,
             weight_decay=1e-4,
         )
-        self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.1)
+        self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=25, gamma=0.1)
         self.criterion = nn.CrossEntropyLoss().cuda()
         
         # For plotting graphs 
