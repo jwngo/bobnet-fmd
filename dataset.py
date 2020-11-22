@@ -69,7 +69,7 @@ class Flickr(data.Dataset):
         img = cv2.imread(img)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         label = self.label_list[idx]
-        if self.mixup: #and random.random() > 0.5
+        if self.mixup and random.random() > 0.5: # comment out (and random.random() > 0.5) to remove the 50% of mixing up
             img, label = self.mixing_up(img, idx)
         img = Image.fromarray(img)        
         plt.imshow(img)
