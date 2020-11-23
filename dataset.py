@@ -130,9 +130,10 @@ class MINC(data.Dataset):
         assert label in (0, 1, 2, 3, 4, 5, 6, 7, 8, 9), "Label is not valid, please check"
         if self.transforms is not None: 
             if type(self.transforms) == A.Compose:
-                img = transforms.functional.resize(img, (227, 227))
+                img = transforms.functional.resize(img, (224, 224))
                 img = self.transforms(image = np.array(img))['image']
                 img = transforms.functional.to_tensor(img)
+                #img = transforms.functional.normalize(img, (0.485,0.456,0.406),(0.229,0.224,0.225))
             else:
                 img = self.transforms(img) 
         sample = {
