@@ -25,6 +25,8 @@ def parse_args():
     parser.add_argument("exp_name", help="name of experiment to run")
     parser.add_argument("--batch_size", type = int, help="batch size of the experiment")
     parser.add_argument("--mixup", action="store_true")
+    parser.add_argument("--deepalexnet", action="store_true")
+    parser.add_argument("--shallowalexnet", action="store_true")
     parser.add_argument("--efficientnet", action="store_true")
     parser.add_argument("--alexnet", action="store_true")
     parser.add_argument("--googlenet", action="store_true")
@@ -152,7 +154,12 @@ class Trainer(object):
             from torchvision.models import alexnet 
             self.model = alexnet(pretrained=True)
             # Change output layer to 10 classes 
-            self.model.classifier[6] = nn.Linear(4096, 10) 
+            if args.deepalexnet:
+                self.model.classifier = torch.nn.Sequential(*self.model.classifier, torch.nn.ReLU(inplace = True),torch.nn.Linear(1000, 10, bias = True))
+            elif args.shallowalexnet:
+                self.model.classifier = torch.nn.Sequential(*[x for idx, x in enumerate(self.model.classifier) if idx <= 3],torch.nn.Linear(4096, 10, bias = True))
+            else:
+                self.model.classifier[6] = nn.Linear(4096, 10) 
             self.model = self.model.to(self.device)
         elif args.densenet:
             self.model = models.densenet121(pretrained = True)
