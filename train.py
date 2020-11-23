@@ -200,7 +200,7 @@ class Trainer(object):
            #self.lr_scheduler.step() 
            epoch_loss += loss.item()
            if iteration % 10 == 0: 
-            print("Epoch: {:d}/{:d} || Iters: {:d}/{:d} || Loss: {:.4f} || lr: {}".format(epoch, self.max_epochs, iteration%self.iters_per_epoch, self.iters_per_epoch, loss.item(), self.optimizer.param_groups[0]['lr']))
+            print("Epoch: {:d}/{:d} || Iters: {:d}/{:d} || Loss: {:.4f} || lr: {}".format(epoch, self.max_epochs, iteration%(self.iters_per_epoch+1), self.iters_per_epoch, loss.item(), self.optimizer.param_groups[0]['lr']))
         if epoch%1 == 0: 
             accuracy = 100*correct/total
             save_dict = { 
